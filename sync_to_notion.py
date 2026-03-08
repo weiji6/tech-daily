@@ -1,5 +1,4 @@
 import requests
-import json
 import os
 import datetime
 
@@ -9,7 +8,24 @@ db = os.environ["DATABASE_ID"]
 url = "https://api.github.com/search/repositories?q=stars:>10000&sort=stars&order=desc&per_page=5"
 data = requests.get(url).json()
 
+def translate(text):
+    if not text:
+        return ""
+    r = requests.post(
+        "https://libretranslate.de/translate",
+        json={
+            "q": text,
+            "source": "en",
+            "target": "zh"
+        }
+    )
+    return r.json()["translatedText"]
+
 for repo in data["items"]:
+
+    description = repo["description"] or ""
+    chinese_intro = translate(description)
+
     payload = {
         "parent": {"database_id": db},
         "properties": {
@@ -23,7 +39,7 @@ for repo in data["items"]:
                 "number": repo["stargazers_count"]
             },
             "introduction": {
-                "rich_text": [{"text": {"content": repo["description"] or ""}}]
+                "rich_text": [{"text": {"content": chinese_intro}}]
             },
             "date": {
                 "date": {"start": datetime.date.today().isoformat()}
