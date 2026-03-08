@@ -13,44 +13,50 @@ headers = {
 }
 
 def translate(text):
+
     if not text:
         return ""
 
-    r = requests.get(
-        "https://translate.googleapis.com/translate_a/single",
-        params={
-            "client": "gtx",
-            "sl": "en",
-            "tl": "zh",
-            "dt": "t",
-            "q": text
-        }
-    )
-
     try:
+        r = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={
+                "client": "gtx",
+                "sl": "en",
+                "tl": "zh",
+                "dt": "t",
+                "q": text
+            },
+            timeout=10
+        )
+
         return r.json()[0][0][0]
+
     except:
         return text
 
-def send_to_notion(title, intro, link, source):
+def send_to_notion(title, intro, link):
 
     payload = {
         "parent": {"database_id": DATABASE_ID},
         "properties": {
             "name": {
-                "title": [{"text": {"content": title}}]
+                "title": [
+                    {"text": {"content": title}}
+                ]
             },
             "link": {
                 "url": link
             },
             "introduction": {
-                "rich_text": [{"text": {"content": intro}}]
-            },
-            "source": {
-                "select": {"name": source}
+                "rich_text": [
+                    {"text": {"content": intro}}
+                ]
             },
             "date": {
-                "date": {"start": datetime.date.today().isoformat()}
+                "date": {
+                    "start": datetime.date.today().isoformat()
+                }
             }
         }
     }
@@ -63,97 +69,130 @@ def send_to_notion(title, intro, link, source):
 
 print("Fetching GitHub Trending...")
 
-html = requests.get(
-    "https://github.com/trending?since=daily"
-).text
+try:
 
-repos = re.findall(
-    r'href="/(.*?)"',
-    html
-)
+    html = requests.get(
+        "https://github.com/trending?since=daily",
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=10
+    ).text
 
-seen = set()
-count = 0
+    repos = re.findall(
+        r'/([\w\-]+/[\w\-]+)"',
+        html
+    )
 
-for r in repos:
+    seen = set()
+    count = 0
 
-    if "/" in r and r.count("/") == 1:
+    for repo in repos:
 
-        if r in seen:
+        if repo in seen:
             continue
 
-        seen.add(r)
+        seen.add(repo)
 
-        url = f"https://github.com/{r}"
+        try:
 
-        api = requests.get(
-            f"https://api.github.com/repos/{r}"
-        ).json()
+            api = requests.get(
+                f"https://api.github.com/repos/{repo}",
+                timeout=10
+            ).json()
 
-        name = api.get("name")
-        desc = api.get("description", "")
+            name = api.get("name")
+            desc = api.get("description") or ""
 
-        intro = translate(desc)
+            if not name:
+                continue
 
-        send_to_notion(
-            name,
-            intro,
-            url,
-            "GitHub"
-        )
+            intro = translate(desc)
 
-        count += 1
-        if count >= 5:
-            break
+            send_to_notion(
+                f"[GitHub] {name}",
+                intro,
+                f"https://github.com/{repo}"
+            )
+
+            count += 1
+
+            if count >= 5:
+                break
+
+        except:
+            continue
+
+except:
+    print("GitHub fetch failed")
 
 print("Fetching Hacker News...")
 
-ids = requests.get(
-    "https://hacker-news.firebaseio.com/v0/topstories.json"
-).json()[:5]
+try:
 
-for i in ids:
+    ids = requests.get(
+        "https://hacker-news.firebaseio.com/v0/topstories.json",
+        timeout=10
+    ).json()[:5]
 
-    item = requests.get(
-        f"https://hacker-news.firebaseio.com/v0/item/{i}.json"
-    ).json()
+    for i in ids:
 
-    title = item.get("title")
+        try:
 
-    link = item.get(
-        "url",
-        f"https://news.ycombinator.com/item?id={i}"
-    )
+            item = requests.get(
+                f"https://hacker-news.firebaseio.com/v0/item/{i}.json",
+                timeout=10
+            ).json()
 
-    intro = translate(title)
+            title = item.get("title")
 
-    send_to_notion(
-        title,
-        intro,
-        link,
-        "HackerNews"
-    )
+            link = item.get(
+                "url",
+                f"https://news.ycombinator.com/item?id={i}"
+            )
 
-print("Fetching arXiv AI papers...")
+            intro = translate(title)
 
-rss = requests.get(
-    "https://export.arxiv.org/rss/cs.AI"
-).text
+            send_to_notion(
+                f"[HN] {title}",
+                intro,
+                link
+            )
 
-items = rss.split("<item>")[1:6]
+        except:
+            continue
 
-for i in items:
+except:
+    print("HN fetch failed")
 
-    title = i.split("<title>")[1].split("</title>")[0]
-    link = i.split("<link>")[1].split("</link>")[0]
+print("Fetching arXiv papers...")
 
-    intro = translate(title)
+try:
 
-    send_to_notion(
-        title,
-        intro,
-        link,
-        "arXiv"
-    )
+    rss = requests.get(
+        "https://export.arxiv.org/rss/cs.AI",
+        timeout=10
+    ).text
+
+    items = rss.split("<item>")[1:6]
+
+    for item in items:
+
+        try:
+
+            title = item.split("<title>")[1].split("</title>")[0]
+            link = item.split("<link>")[1].split("</link>")[0]
+
+            intro = translate(title)
+
+            send_to_notion(
+                f"[arXiv] {title}",
+                intro,
+                link
+            )
+
+        except:
+            continue
+
+except:
+    print("arXiv fetch failed")
 
 print("Done.")
