@@ -5,8 +5,11 @@ import datetime
 token = os.environ["NOTION_TOKEN"]
 db = os.environ["DATABASE_ID"]
 
-url = "https://api.github.com/search/repositories?q=stars:>10000&sort=stars&order=desc&per_page=5"
-data = requests.get(url).json()
+headers = {
+    "Authorization": f"Bearer {token}",
+    "Notion-Version": "2022-06-28",
+    "Content-Type": "application/json"
+}
 
 def translate(text):
     if not text:
@@ -23,25 +26,22 @@ def translate(text):
     )
     return r.json()[0][0][0]
 
-for repo in data["items"]:
 
-    description = repo["description"] or ""
-    chinese_intro = translate(description)
-
+def send_to_notion(title, intro, link, star=0):
     payload = {
         "parent": {"database_id": db},
         "properties": {
             "name": {
-                "title": [{"text": {"content": repo["name"]}}]
+                "title": [{"text": {"content": title}}]
             },
             "link": {
-                "url": repo["html_url"]
+                "url": link
             },
             "star": {
-                "number": repo["stargazers_count"]
+                "number": star
             },
             "introduction": {
-                "rich_text": [{"text": {"content": chinese_intro}}]
+                "rich_text": [{"text": {"content": intro}}]
             },
             "date": {
                 "date": {"start": datetime.date.today().isoformat()}
@@ -51,10 +51,55 @@ for repo in data["items"]:
 
     requests.post(
         "https://api.notion.com/v1/pages",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Notion-Version": "2022-06-28",
-            "Content-Type": "application/json"
-        },
+        headers=headers,
         json=payload
+    )
+
+gh = requests.get(
+    "https://api.github.com/search/repositories?q=stars:>10000&sort=stars&order=desc&per_page=5"
+).json()
+
+for repo in gh["items"]:
+    intro = translate(repo["description"] or "")
+    send_to_notion(
+        repo["name"],
+        intro,
+        repo["html_url"],
+        repo["stargazers_count"]
+    )
+
+hn_ids = requests.get(
+    "https://hacker-news.firebaseio.com/v0/topstories.json"
+).json()[:5]
+
+for i in hn_ids:
+    item = requests.get(
+        f"https://hacker-news.firebaseio.com/v0/item/{i}.json"
+    ).json()
+
+    title = item.get("title")
+    link = item.get("url", f"https://news.ycombinator.com/item?id={i}")
+
+    intro = translate(title)
+
+    send_to_notion(
+        f"HN: {title}",
+        intro,
+        link
+    )
+
+rss = requests.get("https://export.arxiv.org/rss/cs.AI").text
+
+entries = rss.split("<item>")[1:6]
+
+for e in entries:
+    title = e.split("<title>")[1].split("</title>")[0]
+    link = e.split("<link>")[1].split("</link>")[0]
+
+    intro = translate(title)
+
+    send_to_notion(
+        f"arXiv: {title}",
+        intro,
+        link
     )
