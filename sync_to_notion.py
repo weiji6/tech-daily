@@ -11,15 +11,17 @@ data = requests.get(url).json()
 def translate(text):
     if not text:
         return ""
-    r = requests.post(
-        "https://libretranslate.de/translate",
-        json={
-            "q": text,
-            "source": "en",
-            "target": "zh"
+    r = requests.get(
+        "https://translate.googleapis.com/translate_a/single",
+        params={
+            "client": "gtx",
+            "sl": "en",
+            "tl": "zh",
+            "dt": "t",
+            "q": text
         }
     )
-    return r.json()["translatedText"]
+    return r.json()[0][0][0]
 
 for repo in data["items"]:
 
