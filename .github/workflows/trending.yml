@@ -1,0 +1,22 @@
+name: GitHub Trending to Notion
+
+on:
+  schedule:
+    - cron: "0 1 * * *"   
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fetch Trending
+        run: |
+          curl https://github.com/trending > trending.html
+
+      - name: Extract repos
+        run: |
+          grep -o 'href="/[^"]*"' trending.html | head -10 > repos.txt
+
+      - name: Print result
+        run: cat repos.txt
